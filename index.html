@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Чеки</title>
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #fff; --text: #1c2430; --muted: #6b7684; --line: #e3e7ec;
+    --accent: #1f7a4d; --accent-weak: #e6f2ec; --danger: #b42318; --danger-weak: #fdecea;
+    --warn: #8a5a00; --warn-weak: #fdf3e1; --row-hover: #f1f5f3; --shadow: 0 8px 30px rgba(20, 30, 40, .18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161b; --surface: #1a2027; --text: #e6eaef; --muted: #98a2ae; --line: #2b333d;
+      --accent: #4cc38a; --accent-weak: #173326; --danger: #ff7b72; --danger-weak: #3a1d1b;
+      --warn: #e3b341; --warn-weak: #3a2f14; --row-hover: #212a33; --shadow: 0 8px 30px rgba(0, 0, 0, .5);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--danger); }
+  button.link { border: none; background: none; padding: 0; color: var(--muted); text-decoration: underline; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  [hidden] { display: none !important; }
+  .muted { color: var(--muted); font-size: 12px; }
+
+  .top { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px; }
+  .filters input[type=search] { flex: 1 1 260px; min-width: 0; }
+  .filters input[type=search], .filters select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); max-width: 100%; }
+  .filters label { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+
+  main { padding: 0 16px 24px; }
+  .tablewrap { overflow: auto; max-height: calc(100vh - 150px); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; white-space: nowrap; max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  th { position: sticky; top: 0; background: var(--surface); font-weight: 600; font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; z-index: 1; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--row-hover); }
+  .state { padding: 32px; text-align: center; color: var(--muted); }
+
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .b-ok { background: var(--accent-weak); color: var(--accent); }
+  .b-part { background: var(--warn-weak); color: var(--warn); }
+  .b-err { background: var(--danger-weak); color: var(--danger); }
+  .b-none { color: var(--muted); border: 1px solid var(--line); }
+
+  .drawer { position: fixed; inset: 0; background: rgba(0, 0, 0, .3); display: flex; justify-content: flex-end; z-index: 10; }
+  .panel { width: min(520px, 100%); height: 100%; background: var(--surface); box-shadow: var(--shadow); display: flex; flex-direction: column; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .panel-head h2 { font-size: 16px; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  button.icon { border: none; font-size: 18px; padding: 4px 8px; }
+  .info { margin: 0; padding: 12px 16px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; border-bottom: 1px solid var(--line); }
+  .info:empty { display: none; }
+  .info dt { color: var(--muted); }
+  .info dd { margin: 0; word-break: break-word; }
+  .body { padding: 12px 16px; overflow-y: auto; flex: 1; display: grid; gap: 10px; align-content: start; }
+  .body label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+  .body input, .body textarea { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); width: 100%; }
+  .body textarea { min-height: 64px; resize: vertical; }
+  .body input:focus, .body textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .hint { font-size: 12px; color: var(--warn); }
+  .error { margin: 0 16px; padding: 8px 10px; border-radius: 8px; background: var(--danger-weak); color: var(--danger); }
+  .panel-foot { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .panel-foot .danger { margin-left: auto; }
+
+  .users { display: grid; gap: 6px; }
+  .user { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+  .user b { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+  .adduser { display: flex; gap: 8px; }
+  .adduser input { flex: 1; }
+
+  .gate { max-width: 420px; margin: 15vh auto 0; padding: 0 16px; text-align: center; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 8px; z-index: 20; }
+  @media (max-width: 640px) {
+    .tablewrap { max-height: none; }
+    .filters select { flex: 1 1 45%; }
+  }
+</style>
+</head>
+<body>
+<div id="gate" class="gate" hidden>
+  <h1>Чеки</h1>
+  <p id="gateMsg" class="muted"></p>
+</div>
+
+<div id="app" hidden>
+  <header class="top">
+    <div class="brand"><h1>Чеки</h1><span id="refNote" class="muted"></span></div>
+    <div class="actions">
+      <button id="btnAdd" class="primary">+ Добавить</button>
+      <button id="btnXlsx">Скачать Excel</button>
+      <button id="btnUsers" hidden>Доступ</button>
+      <span id="me" class="muted"></span>
+      <button id="btnLogout" class="link">выйти</button>
+    </div>
+  </header>
+
+  <section class="filters">
+    <input id="q" type="search" placeholder="Поиск: ИНН, название, адрес, комментарий…">
+    <select id="fBank"></select>
+    <select id="fWork"></select>
+    <select id="fEnrich"></select>
+    <label><input type="checkbox" id="fNoInn"> без ИНН</label>
+    <span id="count" class="muted"></span>
+  </section>
+
+  <main>
+    <div class="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+    <div id="state" class="state">Загрузка…</div>
+  </main>
+</div>
+
+<div id="drawer" class="drawer" hidden>
+  <div class="panel" role="dialog" aria-modal="true">
+    <div class="panel-head"><h2 id="dTitle"></h2><button id="dClose" class="icon" aria-label="Закрыть">✕</button></div>
+    <dl id="dInfo" class="info"></dl>
+    <form id="dForm" class="body" autocomplete="off"></form>
+    <div id="dError" class="error" hidden></div>
+    <div class="panel-foot">
+      <button id="dSave" class="primary">Сохранить</button>
+      <button id="dCancel">Отмена</button>
+      <button id="dDelete" class="danger">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<div id="usersDrawer" class="drawer" hidden>
+  <div class="panel" role="dialog" aria-modal="true">
+    <div class="panel-head"><h2>Доступ сотрудников</h2><button id="uClose" class="icon" aria-label="Закрыть">✕</button></div>
+    <div class="body">
+      <p class="muted">У каждого сотрудника своя ссылка. Отключённая ссылка перестаёт работать сразу.</p>
+      <form id="uForm" class="adduser"><input id="uName" placeholder="Имя сотрудника"><button class="primary">Создать ссылку</button></form>
+      <div id="uList" class="users"></div>
+      <div id="uError" class="error" hidden></div>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script>
+const VISIBLE = ['Дата добавления', 'Название магазина', 'Юр. название', 'ИНН', 'Банк', 'Оборот в Сбер',
+  'оборот в PS', 'MCC по PS', 'Банк по PS', 'Статус обогащения', 'МПП', 'Статус по отработке', 'Дата следующей'];
+const NUMERIC = ['Оборот в Сбер', 'оборот в PS'];
+const TEXTAREA = ['Адрес', 'Комментарий', 'Комментарий по отработке'];
+const INFO = ['username', 'Timestamp', 'Дата добавления'];
+const BADGE = { 'Сбер + PS': 'ok', 'только Сбер': 'part', 'только PS': 'part', 'ИНН с ошибкой': 'err' };
+const KEY_STORE = 'cheki.key';
+
+let D = null;          // данные с сервера: header, rows, suggest...
+let current = null;    // строка в панели правки; null — новый чек
+let sortCol = null, sortDir = 1;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ci = (name) => D.idx[name.toLowerCase()];
+const val = (r, name) => { const c = ci(name); return c === undefined ? '' : (r.v[c] || ''); };
+
+// --- ключ доступа: приходит в ссылке #k=..., дальше хранится в браузере ----
+function takeKey() {
+  const m = location.hash.match(/k=([0-9a-f]+)/i);
+  if (m) {
+    try { localStorage.setItem(KEY_STORE, m[1]); } catch (e) { /* приватный режим — ключ живёт до закрытия вкладки */ }
+    history.replaceState(null, '', location.pathname + location.search);
+    return m[1];
+  }
+  try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; }
+}
+let KEY = takeKey();
+
+function gate(msg) {
+  $('app').hidden = true;
+  $('gate').hidden = false;
+  $('gateMsg').textContent = msg;
+}
+
+async function api(action, payload) {
+  const res = await fetch(window.CHEKI_API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // без preflight-запроса
+    body: JSON.stringify({ action, key: KEY, ...(payload || {}) }),
+  });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error);
+  return data.result;
+}
+
+async function load() {
+  if (!window.CHEKI_API) return gate('Страница ещё не настроена: не указан адрес API в config.js.');
+  if (!KEY) return gate('Откройте страницу по личной ссылке доступа — её выдаёт администратор.');
+  $('state').hidden = false;
+  $('state').textContent = 'Загрузка…';
+  try {
+    D = await api('load');
+  } catch (e) {
+    return gate(e.message === 'Failed to fetch' ? 'Нет связи с сервером. Проверьте интернет и обновите страницу.' : e.message);
+  }
+  $('gate').hidden = true;
+  $('app').hidden = false;
+  D.idx = {};
+  D.header.forEach((h, i) => { const k = h.toLowerCase(); if (k && !(k in D.idx)) D.idx[k] = i; });
+  $('me').textContent = D.me.name;
+  $('refNote').textContent = D.refNote;
+  $('btnUsers').hidden = D.me.role !== 'admin';
+  fillSelect('fBank', 'Все банки', 'Банк');
+  fillSelect('fWork', 'Любой статус отработки', 'Статус по отработке');
+  fillSelect('fEnrich', 'Любое обогащение', 'Статус обогащения');
+  render();
+}
+
+function fillSelect(id, all, name) {
+  const el = $(id), keep = el.value;
+  const opts = [...new Set(D.rows.map((r) => val(r, name)).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ru'));
+  el.innerHTML = `<option value="">${esc(all)}</option>` + opts.map((o) => `<option>${esc(o)}</option>`).join('');
+  el.value = opts.includes(keep) ? keep : '';
+}
+
+// --- таблица -------------------------------------------------------------
+function sortKey(s) {
+  if (!s) return [2, ''];
+  const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) {
+    const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+    return [0, new Date(y, m[2] - 1, m[1], m[4] || 0, m[5] || 0, m[6] || 0).getTime()];
+  }
+  const n = s.replace(/[\s ]/g, '').replace(',', '.');
+  if (n !== '' && !isNaN(n)) return [0, +n];
+  return [1, s.toLowerCase()];
+}
+
+function filtered() {
+  const q = $('q').value.trim().toLowerCase();
+  const bank = $('fBank').value, work = $('fWork').value, enrich = $('fEnrich').value;
+  const noInn = $('fNoInn').checked;
+  const rows = D.rows.filter((r) =>
+    (!bank || val(r, 'Банк') === bank) &&
+    (!work || val(r, 'Статус по отработке') === work) &&
+    (!enrich || val(r, 'Статус обогащения') === enrich) &&
+    (!noInn || !val(r, 'ИНН')) &&
+    (!q || r.v.join(' ').toLowerCase().includes(q)));
+  if (!sortCol) return rows.slice().reverse(); // новые сверху
+  const keyed = rows.map((r) => [sortKey(val(r, sortCol)), r]);
+  keyed.sort(([a], [b]) => {
+    if (a[0] !== b[0]) return a[0] - b[0];   // пустые всегда внизу
+    return (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0) * sortDir;
+  });
+  return keyed.map(([, r]) => r);
+}
+
+function cell(name, v) {
+  if (name === 'Статус обогащения' && v) return `<td><span class="badge b-${BADGE[v] || 'none'}">${esc(v)}</span></td>`;
+  return `<td class="${NUMERIC.includes(name) ? 'num' : ''}" title="${esc(v)}">${esc(v)}</td>`;
+}
+
+function render() {
+  const cols = VISIBLE.filter((n) => ci(n) !== undefined);
+  const arrow = (n) => (sortCol === n ? (sortDir > 0 ? ' ▲' : ' ▼') : '');
+  document.querySelector('#tbl thead').innerHTML = '<tr>' + cols.map((n) =>
+    `<th data-col="${esc(n)}" class="${NUMERIC.includes(n) ? 'num' : ''}">${esc(n)}${arrow(n)}</th>`).join('') + '</tr>';
+  const rows = filtered();
+  document.querySelector('#tbl tbody').innerHTML = rows.map((r) =>
+    `<tr data-row="${r.row}">${cols.map((n) => cell(n, val(r, n))).join('')}</tr>`).join('');
+  $('count').textContent = `Показано ${rows.length} из ${D.rows.length}`;
+  $('state').hidden = rows.length > 0;
+  if (!rows.length) $('state').textContent = 'Ничего не найдено';
+}
+
+// --- панель правки -------------------------------------------------------
+function toIso(s) {
+  const m = (s || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})/);
+  if (!m) return '';
+  const y = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+  return `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+const fromIso = (s) => (s ? s.split('-').reverse().join('.') : '');
+
+function innHint(v) {
+  const d = v.replace(/\D/g, '');
+  if (!d) return '';
+  if (d.length !== 10 && d.length !== 12) return 'ИНН должен содержать 10 или 12 цифр';
+  const n = d.split('').map(Number);
+  const chk = (w) => (w.reduce((s, k, i) => s + k * n[i], 0) % 11) % 10;
+  const ok = n.length === 10 ? chk([2, 4, 10, 3, 5, 9, 4, 6, 8]) === n[9]
+    : chk([7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === n[10] && chk([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === n[11];
+  return ok ? '' : 'Контрольная сумма ИНН не сходится — проверьте цифры';
+}
+
+function field(name, i) {
+  const v = current ? val(current, name) : '';
+  const id = `f${i}`;
+  let input;
+  if (D.dateOnly.includes(name) && (!v || toIso(v))) {
+    input = `<input id="${id}" type="date" data-name="${esc(name)}" data-kind="date" value="${toIso(v)}">`;
+  } else if (TEXTAREA.includes(name)) {
+    input = `<textarea id="${id}" data-name="${esc(name)}">${esc(v)}</textarea>`;
+  } else {
+    const list = D.suggest[name] ? ` list="${id}l"` : '';
+    const mode = name === 'ИНН' ? ' inputmode="numeric"' : '';
+    input = `<input id="${id}" type="text" data-name="${esc(name)}" value="${esc(v)}"${list}${mode}>`;
+    if (list) input += `<datalist id="${id}l">${D.suggest[name].map((o) => `<option value="${esc(o)}">`).join('')}</datalist>`;
+  }
+  const hint = name === 'ИНН' ? `<span class="hint" id="innHint">${esc(innHint(v))}</span>` : '';
+  return `<label for="${id}">${esc(name)}${input}${hint}</label>`;
+}
+
+function openDrawer(r) {
+  current = r;
+  $('dTitle').textContent = r ? (val(r, 'Название магазина') || val(r, 'Юр. название') || 'Чек') : 'Новый чек';
+  const info = r ? [...INFO, ...D.outCols].filter((n) => val(r, n)) : [];
+  $('dInfo').innerHTML = info.map((n) => `<dt>${esc(n)}</dt><dd>${esc(val(r, n))}</dd>`).join('');
+  $('dForm').innerHTML = D.editable.filter((n) => !r || ci(n) !== undefined).map(field).join('');
+  const inn = $('dForm').querySelector('[data-name="ИНН"]');
+  if (inn) inn.addEventListener('input', () => { $('innHint').textContent = innHint(inn.value); });
+  $('dDelete').hidden = !r;
+  $('dError').hidden = true;
+  $('drawer').hidden = false;
+  const first = $('dForm').querySelector('input, textarea');
+  if (first && !r) first.focus();
+}
+
+function closeDrawer() { $('drawer').hidden = true; current = null; }
+
+function busy(on) { ['dSave', 'dDelete', 'dCancel'].forEach((id) => { $(id).disabled = on; }); }
+
+function showError(id, msg) { $(id).textContent = msg; $(id).hidden = false; }
+
+function toast(msg) {
+  $('toast').textContent = msg;
+  $('toast').hidden = false;
+  clearTimeout(toast.t);
+  toast.t = setTimeout(() => { $('toast').hidden = true; }, 2500);
+}
+
+async function save() {
+  const values = {};
+  $('dForm').querySelectorAll('[data-name]').forEach((el) => {
+    const name = el.dataset.name;
+    const v = el.dataset.kind === 'date' ? fromIso(el.value) : el.value.trim();
+    if (!current || v !== val(current, name)) values[name] = v;
+  });
+  if (current && !Object.keys(values).length) return closeDrawer();
+  if (!current && !values['ИНН'] && !values['Название магазина'] && !values['Юр. название']) {
+    return showError('dError', 'Заполните хотя бы ИНН, название магазина или юр. название');
+  }
+  const isNew = !current;
+  busy(true);
+  try {
+    const res = await api('save', { row: isNew ? null : current.row, hash: isNew ? null : current.hash, values });
+    closeDrawer();
+    if (res.header.length !== D.header.length) return load(); // в таблице появились новые колонки
+    const i = D.rows.findIndex((r) => r.row === res.row.row);
+    if (i >= 0) D.rows[i] = res.row; else D.rows.push(res.row);
+    render();
+    toast(isNew ? 'Чек добавлен' : 'Сохранено');
+  } catch (e) {
+    showError('dError', e.message);
+  } finally {
+    busy(false);
+  }
+}
+
+async function remove() {
+  if (!confirm('Удалить этот чек из таблицы?')) return;
+  busy(true);
+  try {
+    await api('delete', { row: current.row, hash: current.hash });
+    closeDrawer();
+    toast('Удалено');
+    await load(); // номера строк ниже удалённой сдвинулись
+  } catch (e) {
+    showError('dError', e.message);
+  } finally {
+    busy(false);
+  }
+}
+
+// --- выгрузка ------------------------------------------------------------
+function download() {
+  const cols = D.header.map((h, i) => [h, i]).filter(([h]) => h);
+  const rows = filtered();
+  const asNumber = (h, v) => {
+    if (!NUMERIC.includes(h) || v === '') return v;
+    const n = Number(v.replace(/[\s ]/g, '').replace(',', '.'));
+    return isNaN(n) ? v : n;
+  };
+  const aoa = [cols.map(([h]) => h), ...rows.map((r) => cols.map(([h, i]) => asNumber(h, r.v[i] || '')))];
+  const stamp = new Date().toISOString().slice(0, 10);
+  if (window.XLSX) {
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = cols.map(([h]) => ({ wch: Math.min(Math.max(h.length + 2, 12), 40) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Чеки');
+    XLSX.writeFile(wb, `Чеки_${stamp}.xlsx`);
+  } else {
+    // библиотека не загрузилась — отдаём CSV, который открывается в Excel
+    const csv = aoa.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `Чеки_${stamp}.csv`;
+    a.click();
+  }
+  toast(`Выгружено строк: ${rows.length}`);
+}
+
+// --- доступ сотрудников (только администратор) ---------------------------
+const linkFor = (key) => `${location.origin}${location.pathname}#k=${key}`;
+
+async function copy(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Ссылка скопирована');
+  } catch (e) {
+    prompt('Скопируйте ссылку:', text);
+  }
+}
+
+async function openUsers() {
+  $('usersDrawer').hidden = false;
+  $('uError').hidden = true;
+  $('uList').innerHTML = '<span class="muted">Загрузка…</span>';
+  try {
+    renderUsers(await api('users'));
+  } catch (e) {
+    showError('uError', e.message);
+  }
+}
+
+function renderUsers(list) {
+  $('uList').innerHTML = list.length ? list.map((u) =>
+    `<div class="user"><b title="${esc(u.name)}">${esc(u.name)}</b><span class="muted">${esc(u.created || '')}</span>` +
+    `<button data-copy="${esc(u.key)}">Скопировать ссылку</button><button class="danger" data-off="${esc(u.id)}" data-name="${esc(u.name)}">Отключить</button></div>`
+  ).join('') : '<span class="muted">Пока ни одной ссылки</span>';
+}
+
+$('uForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const name = $('uName').value.trim();
+  if (!name) return;
+  try {
+    const u = await api('addUser', { name });
+    $('uName').value = '';
+    renderUsers(await api('users'));
+    copy(linkFor(u.key));
+  } catch (err) {
+    showError('uError', err.message);
+  }
+});
+$('uList').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.copy) return copy(linkFor(b.dataset.copy));
+  if (b.dataset.off && confirm(`Отключить ссылку для «${b.dataset.name}»?`)) {
+    try {
+      await api('removeUser', { id: b.dataset.off });
+      renderUsers(await api('users'));
+    } catch (err) {
+      showError('uError', err.message);
+    }
+  }
+});
+
+// --- события -------------------------------------------------------------
+$('q').addEventListener('input', () => D && render());
+['fBank', 'fWork', 'fEnrich', 'fNoInn'].forEach((id) => $(id).addEventListener('change', () => D && render()));
+document.querySelector('#tbl thead').addEventListener('click', (e) => {
+  const th = e.target.closest('th');
+  if (!th) return;
+  const col = th.dataset.col;
+  if (sortCol === col) sortDir = -sortDir; else { sortCol = col; sortDir = 1; }
+  render();
+});
+document.querySelector('#tbl tbody').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr');
+  if (tr) openDrawer(D.rows.find((r) => r.row === +tr.dataset.row));
+});
+$('btnAdd').addEventListener('click', () => openDrawer(null));
+$('btnXlsx').addEventListener('click', download);
+$('btnUsers').addEventListener('click', openUsers);
+$('btnLogout').addEventListener('click', () => {
+  try { localStorage.removeItem(KEY_STORE); } catch (e) { /* нечего удалять */ }
+  KEY = '';
+  gate('Вы вышли. Чтобы вернуться, откройте свою личную ссылку ещё раз.');
+});
+$('dSave').addEventListener('click', save);
+$('dDelete').addEventListener('click', remove);
+$('dCancel').addEventListener('click', closeDrawer);
+$('dClose').addEventListener('click', closeDrawer);
+$('uClose').addEventListener('click', () => { $('usersDrawer').hidden = true; });
+['drawer', 'usersDrawer'].forEach((id) => $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).hidden = true; }));
+$('dForm').addEventListener('submit', (e) => e.preventDefault());
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!$('drawer').hidden) closeDrawer();
+  $('usersDrawer').hidden = true;
+});
+
+load();
+</script>
+</body>
+</html>
