@@ -83,6 +83,7 @@
   .adduser { display: flex; gap: 8px; }
   .adduser input { flex: 1; }
 
+  .body textarea.report { min-height: 60vh; line-height: 1.5; }
   .gate { max-width: 420px; margin: 15vh auto 0; padding: 0 16px; text-align: center; }
   .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 8px; z-index: 20; }
   @media (max-width: 640px) {
@@ -103,6 +104,7 @@
     <div class="actions">
       <button id="btnAdd" class="primary">+ Добавить</button>
       <button id="btnXlsx">Скачать Excel</button>
+      <button id="btnReport">📊 Отчёт</button>
       <button id="btnUsers" hidden>Доступ</button>
       <span id="me" class="muted"></span>
       <button id="btnLogout" class="link">выйти</button>
@@ -146,6 +148,20 @@
       <form id="uForm" class="adduser"><input id="uName" placeholder="Имя сотрудника"><button class="primary">Создать ссылку</button></form>
       <div id="uList" class="users"></div>
       <div id="uError" class="error" hidden></div>
+    </div>
+  </div>
+</div>
+<div id="reportDrawer" class="drawer" hidden>
+  <div class="panel" role="dialog" aria-modal="true">
+    <div class="panel-head"><h2>Отчёт</h2><button id="rClose" class="icon" aria-label="Закрыть">✕</button></div>
+    <div class="body">
+      <p id="rMeta" class="muted"></p>
+      <textarea id="rText" class="report" spellcheck="false"></textarea>
+      <div id="rError" class="error" hidden></div>
+    </div>
+    <div class="panel-foot">
+      <button id="rCopy" class="primary">Скопировать</button>
+      <button id="rFresh">Сформировать заново</button>
     </div>
   </div>
 </div>
@@ -422,6 +438,37 @@ function download() {
   toast(`Выгружено строк: ${rows.length}`);
 }
 
+// --- отчёт ---------------------------------------------------------------
+async function openReport(fresh) {
+  $('reportDrawer').hidden = false;
+  $('rError').hidden = true;
+  $('rFresh').disabled = true;
+  $('rMeta').textContent = 'Формирую…';
+  try {
+    const r = await api('report', { fresh: !!fresh });
+    $('rText').value = r.text;
+    $('rMeta').textContent = (r.weekly ? `Еженедельный отчёт от ${r.at}` : `Сформирован ${r.at}`) +
+      ' · текст можно поправить перед копированием';
+  } catch (e) {
+    $('rMeta').textContent = '';
+    showError('rError', e.message);
+  } finally {
+    $('rFresh').disabled = false;
+  }
+}
+
+$('rCopy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('rText').value);
+  } catch (e) {
+    $('rText').select();
+    document.execCommand('copy');
+  }
+  toast('Отчёт скопирован');
+});
+$('rFresh').addEventListener('click', () => openReport(true));
+$('rClose').addEventListener('click', () => { $('reportDrawer').hidden = true; });
+
 // --- доступ сотрудников (только администратор) ---------------------------
 const linkFor = (key) => `${location.origin}${location.pathname}#k=${key}`;
 
@@ -496,6 +543,7 @@ document.querySelector('#tbl tbody').addEventListener('click', (e) => {
 $('btnAdd').addEventListener('click', () => openDrawer(null));
 $('btnXlsx').addEventListener('click', download);
 $('btnUsers').addEventListener('click', openUsers);
+$('btnReport').addEventListener('click', () => openReport(false));
 $('btnLogout').addEventListener('click', () => {
   try { localStorage.removeItem(KEY_STORE); } catch (e) { /* нечего удалять */ }
   KEY = '';
@@ -506,12 +554,13 @@ $('dDelete').addEventListener('click', remove);
 $('dCancel').addEventListener('click', closeDrawer);
 $('dClose').addEventListener('click', closeDrawer);
 $('uClose').addEventListener('click', () => { $('usersDrawer').hidden = true; });
-['drawer', 'usersDrawer'].forEach((id) => $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).hidden = true; }));
+['drawer', 'usersDrawer', 'reportDrawer'].forEach((id) => $(id).addEventListener('click', (e) => { if (e.target === $(id)) $(id).hidden = true; }));
 $('dForm').addEventListener('submit', (e) => e.preventDefault());
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!$('drawer').hidden) closeDrawer();
   $('usersDrawer').hidden = true;
+  $('reportDrawer').hidden = true;
 });
 
 load();
