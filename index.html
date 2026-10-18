@@ -50,6 +50,7 @@
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: var(--row-hover); }
+  td a { color: var(--accent); }
   .state { padding: 32px; text-align: center; color: var(--muted); }
 
   .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
@@ -170,7 +171,7 @@
 <script>
 const VISIBLE = ['Дата добавления', 'Название магазина', 'Юр. название', 'ИНН', 'Банк', 'Оборот в Сбер',
   'оборот в PS', 'MCC по PS', 'Банк по PS', 'Статус обогащения', 'МПП', 'Статус по отработке',
-  'Комментарий по отработке', 'Дата следующей'];
+  'Комментарий по отработке', 'Дата следующей', 'ID задачи в РИТМ'];
 const NUMERIC = ['Оборот в Сбер', 'оборот в PS'];
 const TEXTAREA = ['Адрес', 'Комментарий', 'Комментарий по отработке'];
 const INFO = ['username', 'Timestamp', 'Дата добавления'];
@@ -279,6 +280,7 @@ function filtered() {
 
 function cell(name, v) {
   if (name === 'Статус обогащения' && v) return `<td><span class="badge b-${BADGE[v] || 'none'}">${esc(v)}</span></td>`;
+  if (/^https?:\/\/\S+$/.test(v)) return `<td title="${esc(v)}"><a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a></td>`;
   return `<td class="${NUMERIC.includes(name) ? 'num' : ''}" title="${esc(v)}">${esc(v)}</td>`;
 }
 
@@ -537,6 +539,7 @@ document.querySelector('#tbl thead').addEventListener('click', (e) => {
   render();
 });
 document.querySelector('#tbl tbody').addEventListener('click', (e) => {
+  if (e.target.closest('a')) return; // ссылка в ячейке открывается сама, без панели правки
   const tr = e.target.closest('tr');
   if (tr) openDrawer(D.rows.find((r) => r.row === +tr.dataset.row));
 });
